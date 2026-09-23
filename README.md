@@ -7,7 +7,7 @@ The local prototype supports 2–8 players in a shared room, with character crea
 1. Open a terminal in this folder.
 2. Run `python server.py` with Python 3 installed.
 3. Open <https://he-who-fights-with-monsters-multiplayer-2.onrender.com/> in a browser.
-4. Create a room. Teammates on this computer can join with the code. For another device on the same Wi-Fi, use this computer's local network IP address with `:8000`.
+4. Create a room. Teammates on this computer can join with the code.
 
 The local server keeps room state in memory. Rooms reset when the server stops. This prototype is for local testing and is not yet deployed to a public URL.
 
