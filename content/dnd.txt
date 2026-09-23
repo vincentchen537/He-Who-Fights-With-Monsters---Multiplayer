@@ -1,0 +1,32 @@
+Essences and Types
+
+Common
+
+Adept    Ape    Air[1]    Armor    Axe    Bat    Bear    Bee    Bird    Bow    Cage    Cat
+Cattle    Chain    Cloth    Coral    Crocodile    Deer    Dog    Duck    Earth    Eye    Feast    Fire
+Fish    Flea    Foot    Fork    Fox    Frog    Fungus    Goat    Grazen    Gun    Hair    Hammer
+Hand    Heidel    Hook    Horse    Hunt    Iron    Knife    Lizard    Locust    Magic    Manatee    Might
+Monkey    Mouse    Needle    Net    Octopus    Pangolin    Paper    Plant   Poison  Rabbit    Rake    Rat    Scepter
+Shark    Shield    Ship    Shovel    Sickle    Skunk    Sloth    Snake    Spear    Spider    Spike    Staff
+Swift    Sword    Technology    Thread    Tooth    Trap    Tree    Trowel    Turtle    Vehicle    Wasp    Water
+Whale    Wheel    Whip    Wind    Wolf
+
+Uncommon
+
+Balance    Blood    Bone    Claw    Cloud    Cold    Dance    Dark    Death    Dust
+Flesh    Glass    Growth    Ice    Knowledge    Life    Light    Lightning    Mirror    Pure
+Sand    Smoke    Song    Venom
+
+Rare
+
+Crystal    Deep    Echo    Gathering    Hunger    Moon    Resolute    Serene    Star    Sun
+Zeal   Shadow 
+
+Epic
+
+Corrupt    Discord   Druid   Elemental    Harmonic    Malign    Omen    Potent    Renewal    Rune    Shimmer
+Tentacle    Wing
+
+Legendary
+
+Blight   Chaos   Dimension    Myriad   Space   Sin    Vast    Visage    Void 
