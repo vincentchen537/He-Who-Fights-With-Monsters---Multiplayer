@@ -388,10 +388,10 @@ def make_skills(desc, essences):
             count = random.randint(1, min(3, len(candidates)))
             for index in random.sample(candidates, count):
                 skills[index]["type"] = "hybrid"
-                skills[index]["desc"] = f"Can Heal HP or mana, or deal damage. {skills[index]['desc']}"
+                skills[index]["desc"] = f"Can heal HP, restore mana, or deal damage. {skills[index]['desc']}"
         for skill in skills:
             if skill["type"] == "heal":
-                skill["desc"] = f"Can Heal HP or mana. {skill['desc']}"
+                skill["desc"] = f"Can heal HP or restore mana. {skill['desc']}"
     return skills
 
 def make_awakened_skill(player, cost, tier):
@@ -526,7 +526,7 @@ def check_result(r):
     if not can_fight and healing_potions == 0 and mana_potions == 0:
         r["phase"] = "ended"
         r["scene"] = "No one ever heard from them again."
-        r["defeatReason"] = "The party ran out of healing and mana potions, and no hero had both HP and mana left to continue."
+        r["defeatReason"] = "The party had no healing or mana potions left, and no one had both HP and mana remaining."
         r["log"].insert(0, "Defeat: the party had no healing or mana potions remaining, and no hero could continue the fight.")
         return
     if not any(e["hp"] > 0 for e in r["enemies"]):
@@ -603,7 +603,7 @@ def victory_epilogue(r):
     if choices.get("sideQuestsWon", 0):
         aftermath.append(f"Because the party answered the guild contract, the people of {arc['settlement']} survived the cult's advance. They turn the rescued waystation into a refuge and send the guild a map of safe roads through the region.")
     elif choices.get("sideQuestsSkipped", 0):
-        aftermath.append(f"The party's decision to press on left {arc['settlement']} to face the danger alone. Its residents escaped before the cults arrived, but their ward station was lost; rebuilding it becomes the first task on the guild's board.")
+        aftermath.append(f"By pressing on, the party left the people of {arc['settlement']} to face the danger alone. The residents escaped before the cults arrived, but their ward station was lost. Rebuilding it becomes the guild's first task.")
     else:
         aftermath.append(f"With the cults driven out, {arc['settlement']} opens its gates to the returning guild teams. The town's merchants and essence-users begin restoring the damaged wards together.")
     if choices.get("goldSpent", 0):
@@ -612,8 +612,14 @@ def victory_epilogue(r):
         aftermath.append("The party's unspent treasury stays in the guild vault, reserved for the next crew sent to protect the region.")
     supporters = choices.get("supporters", [])
     if supporters:
-        names = ", ".join(supporters[:3])
-        aftermath.append(f"In the guild's battle report, {names} are remembered for keeping companions standing when the line began to break.")
+        remembered = supporters[:3]
+        if len(remembered) == 1:
+            names, verb = remembered[0], "is"
+        elif len(remembered) == 2:
+            names, verb = f"{remembered[0]} and {remembered[1]}", "are"
+        else:
+            names, verb = f"{', '.join(remembered[:-1])}, and {remembered[-1]}", "are"
+        aftermath.append(f"In the guild's battle report, {names} {verb} remembered for keeping companions standing when the line began to break.")
     else:
         aftermath.append("The guild chroniclers describe a party that trusted each member to hold their own place in the line.")
     closing = random.choice([
