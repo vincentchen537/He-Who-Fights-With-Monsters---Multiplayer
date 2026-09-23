@@ -63,6 +63,54 @@ def record_support(room, player):
     if player["name"] not in names:
         names.append(player["name"])
 
+def prepare_story_decision(room):
+    option_pool = [
+        {"id": "scout", "title": "Study the breach", "desc": "Scout the enemy and reduce armor by 2 in the next boss battle."},
+        {"id": "supplies", "title": "Gather guild supplies", "desc": "Ask the local guild for help and add 25 gold to the shared treasury."},
+        {"id": "rest", "title": "Take a dangerous rest", "desc": "Everyone restores 20 HP and 20 mana. Each rest permanently strengthens every remaining boss by 10% HP, +1 attack, and +1 armor (stacks up to 3 times)."},
+        {"id": "meditate", "title": "Attune to your essences", "desc": "The whole party restores 15 mana before the next encounter."},
+        {"id": "ward", "title": "Raise a ward together", "desc": "Each hero gains a 5-point guard against the next boss's attacks."},
+    ]
+    room["storyDecision"] = {
+        "question": random.choice(["How should the party prepare for the next breach?", "The guild offers several ways to help. Which path will you choose?", "Before moving on, decide what your party needs most."]),
+        "options": random.sample(option_pool, 3),
+        "votes": {}, "resolved": False, "winner": None, "result": "",
+    }
+
+def resolve_story_decision(room):
+    decision = room.get("storyDecision")
+    if not decision or decision.get("resolved") or len(decision.get("votes", {})) < len(room["players"]):
+        return
+    totals = {}
+    for choice in decision["votes"].values():
+        totals[choice] = totals.get(choice, 0) + 1
+    highest = max(totals.values())
+    winner = random.choice([choice for choice, count in totals.items() if count == highest])
+    decision["winner"] = winner
+    decision["resolved"] = True
+    if winner == "scout":
+        room["nextBossArmorReduction"] = room.get("nextBossArmorReduction", 0) + 2
+        decision["result"] = "The party chose to study the breach. Every enemy in the next boss battle will have 2 less armor."
+    elif winner == "supplies":
+        room["sharedGold"] += 25
+        decision["result"] = "The party gathered supplies from the local guild. The shared treasury gains 25 gold."
+    elif winner == "rest":
+        for player in room["players"]:
+            player["hp"] = min(player["maxHp"], player["hp"] + 20)
+            player["mana"] = min(100, player["mana"] + 20)
+        room["restDifficulty"] = min(3, room.get("restDifficulty", 0) + 1)
+        stacks = room["restDifficulty"]
+        decision["result"] = f"The party rested and everyone restored up to 20 HP and 20 mana. The remaining bosses are now stronger: +{stacks * 10}% HP, +{stacks} attack, and +{stacks} armor. This danger stacks up to three times."
+    elif winner == "meditate":
+        for player in room["players"]:
+            player["mana"] = min(100, player["mana"] + 15)
+        decision["result"] = "The party attuned to its essences. Everyone restores up to 15 mana."
+    elif winner == "ward":
+        room["nextBossGuard"] = room.get("nextBossGuard", 0) + 5
+        decision["result"] = "The party raised a shared ward. Each hero will absorb 5 damage from the next boss's attacks."
+    choices = room.setdefault("campaignChoices", {})
+    choices.setdefault("preparationDecisions", []).append(winner)
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(ROOT), **kwargs)
@@ -153,6 +201,9 @@ class Handler(SimpleHTTPRequestHandler):
                     del ROOMS[code]
                     CLOSED_ROOMS.add(code)
                     return self.send_json(200, {"closed": True})
+                if room.get("phase") == "story":
+                    room.get("storyDecision", {}).get("votes", {}).pop(pid, None)
+                    resolve_story_decision(room)
                 if room["phase"] == "battle" and leaving_index < room["turn"]:
                     room["turn"] -= 1
                 room["votes"] = {
@@ -196,15 +247,35 @@ class Handler(SimpleHTTPRequestHandler):
                 player["pendingAwakenings"] -= 1
                 player["items"].append("Awakening stone")
                 room["log"].insert(0, f"{player['name']} awakened {skill['name']} ({skill['tier']}, {skill['cost']}% mana).")
+            elif action == "potion":
+                if room["phase"] not in {"story", "dispatch", "loot", "shop"}:
+                    return self.send_json(400, {"error": "Potions can be used outside battle between encounters."})
+                kind = str(data.get("kind", ""))
+                if kind not in {"healing", "mana"}: return self.send_json(400, {"error": "Choose a healing or mana potion."})
+                if player.get("potions", {}).get(kind, 0) <= 0: return self.send_json(400, {"error": f"You have no {kind} potions."})
+                target = find_player(room, str(data.get("target", "")))
+                if not target: return self.send_json(400, {"error": "Choose a party member to receive the potion."})
+                key, cap = ("hp", target["maxHp"]) if kind == "healing" else ("mana", 100)
+                if target[key] >= cap: return self.send_json(400, {"error": f"{target['name']} already has full {'HP' if kind == 'healing' else 'mana'}."})
+                player["potions"][kind] -= 1
+                die = random.randint(1, 20); amount = roll_value(die)
+                restored = min(cap - target[key], amount)
+                target[key] += restored
+                record_support(room, player)
+                label = "HP" if kind == "healing" else "mana"
+                room["log"].insert(0, f"{player['name']} used a {kind} potion on {target['name']}, restoring {restored} {label} at full effect (d20: {die}).")
             elif action == "start":
                 if pid != room["host"]: return self.send_json(403, {"error": "Only the host can begin."})
                 if len(room["players"]) < 2: return self.send_json(400, {"error": "Invite at least one teammate before beginning."})
                 if not all(p["ready"] for p in room["players"]): return self.send_json(400, {"error": "Everyone needs to finish character creation first."})
                 arc = room.get("campaign", random.choice(CAMPAIGN_ARCS))
                 room["phase"] = "story"; room["scene"] = f"A guild liaison unrolls a map: three sealed breaches threaten the trade route. Near {arc['settlement']}, {arc['signal']}. Jason Asano studies the map while {arc['companion']} traces a route between the wards. ‘Before we move, learn how your companions fight. Out there, a good plan matters as much as a strong essence.’"; room["round"] = 0; room["storyNext"] = "boss"
+                prepare_story_decision(room)
             elif action == "advance":
                 if pid != room["host"]: return self.send_json(403, {"error": "Only the host can advance the journey."})
                 if room["phase"] == "story":
+                    if not room.get("storyDecision", {}).get("resolved"):
+                        return self.send_json(400, {"error": "Everyone must vote on the party's preparation before continuing."})
                     if room.get("storyNext") == "dispatch":
                         room["phase"] = "dispatch"
                         arc = room.get("campaign", random.choice(CAMPAIGN_ARCS))
@@ -217,11 +288,21 @@ class Handler(SimpleHTTPRequestHandler):
                 elif room["phase"] == "shop":
                     room["phase"] = "story"; room["scene"] = story_for(room, room["bossIndex"])
                     room["storyNext"] = "dispatch" if room["bossIndex"] in (1, 2) and room.get("sideQuestCount", 0) < room["bossIndex"] else "boss"
+                    prepare_story_decision(room)
                 elif room["phase"] == "victory": room["phase"] = "ended"
             elif action == "side":
                 if pid != room["host"]: return self.send_json(403, {"error": "Only the host can begin a side quest."})
                 if room["phase"] != "dispatch": return self.send_json(400, {"error": "Side quests are available from the guild board between encounters."})
                 launch_sidequest(room)
+            elif action == "story_vote":
+                if room["phase"] != "story": return self.send_json(400, {"error": "Party preparation votes are only available during story scenes."})
+                decision = room.get("storyDecision")
+                if not decision or decision.get("resolved"): return self.send_json(400, {"error": "The party has already finalized this choice."})
+                choice = str(data.get("choice", ""))
+                if choice not in {option["id"] for option in decision["options"]}:
+                    return self.send_json(400, {"error": "Choose one of the available preparations."})
+                decision["votes"][pid] = choice
+                resolve_story_decision(room)
             elif action == "act":
                 if room["phase"] != "battle": return self.send_json(400, {"error": "It is not a battle turn."})
                 if room["turn"] >= len(room["players"]): return self.send_json(400, {"error": "Waiting for the enemy turn."})
@@ -473,7 +554,22 @@ def launch_boss(r):
         templates = templates + random.sample(reinforcements, min(count - len(templates), len(reinforcements)))
     r["enemies"] = scaled_enemy_group(templates, count, party_size, rank,
                                        attack_bonus=max(0, (party_size - 2) // 3), hp_growth=0.13)
-    r["phase"] = "battle"; r["turn"] = 0; r["round"] = 1; r["log"] = [f"Boss {idx+1} · {rank} rank: {', '.join(x['name'] for x in r['enemies'])} block the way."]
+    armor_reduction = r.pop("nextBossArmorReduction", 0)
+    if armor_reduction:
+        for enemy in r["enemies"]:
+            enemy["armor"] = max(0, enemy["armor"] - armor_reduction)
+    opening_guard = r.pop("nextBossGuard", 0)
+    if opening_guard:
+        for hero in r["players"]:
+            hero["guard"] += opening_guard
+    rest_stacks = min(3, r.get("restDifficulty", 0))
+    if rest_stacks:
+        for enemy in r["enemies"]:
+            enemy["hp"] = round(enemy["hp"] * (1 + 0.10 * rest_stacks))
+            enemy["maxHp"] = enemy["hp"]
+            enemy["attack"] += rest_stacks
+            enemy["armor"] += rest_stacks
+    r["phase"] = "battle"; r["turn"] = 0; r["round"] = 1; r["log"] = [f"Boss {idx+1} · {rank} rank: {', '.join(x['name'] for x in r['enemies'])} block the way." + (f" Rest empowerment: +{rest_stacks * 10}% HP, +{rest_stacks} attack, and +{rest_stacks} armor." if rest_stacks else "")]
     skip_incapacitated_turns(r, rescue=True)
     check_result(r)
 
@@ -635,6 +731,7 @@ def open_store_or_next(r):
         arc = r.get("campaign", random.choice(CAMPAIGN_ARCS))
         r["scene"] = f"The guild records the party's side-contract success. Word from {arc['settlement']} confirms the residents are safe, and the team earns a rank for answering the call. {arc['companion']} shares their thanks. The next breach is still ahead."
         r["storyNext"] = "boss"
+        prepare_story_decision(r)
         return
     if r["bossIndex"] >= 3:
         r["phase"]="victory"; r["scene"]=victory_epilogue(r); return
