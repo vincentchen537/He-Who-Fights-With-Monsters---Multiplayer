@@ -437,7 +437,7 @@ def skill_for(desc, essences, cost, tier, awakened=False, forced_kind=None):
         mana_scenes = {2:f"A bright mote of {motif} sparks in an ally's palm.", 4:f"A flowing current of {motif} refills an ally's fading reserves.", 6:f"A deep well of {motif} opens beneath a companion, restoring their focus.", 8:f"A resonant halo of {motif} pours fresh power into an ally.", 10:f"An immense font of {motif} floods an ally with renewed magical force."}
         effect = {
             "damage": damage_scenes[cost],
-            "heal": f"{heal_scenes[cost]} Choose whether the energy restores HP or mana.",
+            "heal": heal_scenes[cost],
             "mana": mana_scenes[cost],
         }[kind]
     if awakened:
@@ -469,10 +469,6 @@ def make_skills(desc, essences):
             count = random.randint(1, min(3, len(candidates)))
             for index in random.sample(candidates, count):
                 skills[index]["type"] = "hybrid"
-                skills[index]["desc"] = f"Can heal HP, restore mana, or deal damage. {skills[index]['desc']}"
-        for skill in skills:
-            if skill["type"] == "heal":
-                skill["desc"] = f"Can heal HP or restore mana. {skill['desc']}"
     return skills
 
 def make_awakened_skill(player, cost, tier):
