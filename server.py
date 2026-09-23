@@ -320,7 +320,9 @@ class Handler(SimpleHTTPRequestHandler):
                     skill = player["skills"][skill_idx]
                     if player["mana"] < skill["cost"]: return self.send_json(400, {"error": "Not enough mana for that skill."})
                     skill_type = skill["type"]
-                    if skill_type == "hybrid":
+                    if skill.get("canDefend") and data.get("intent") == "support":
+                        skill_type = "defense"
+                    elif skill_type == "hybrid":
                         skill_type = str(data.get("intent", ""))
                         if skill_type not in {"damage", "heal"}: return self.send_json(400, {"error": "Choose whether this spell deals damage or heals."})
                     player["mana"] -= skill["cost"]
@@ -331,6 +333,13 @@ class Handler(SimpleHTTPRequestHandler):
                         target["guard"] += 5
                         record_support(room, player)
                         msg = f"{player['name']} set {target['name']} behind a {skill['name']} ward. It will soften the next enemy attack (d20: {die})."
+                    elif skill_type == "defense":
+                        target = find_player(room, target_id)
+                        if not target: return self.send_json(400, {"error": "Choose an ally to defend."})
+                        guard_gain = min(20, max(2, round(val * 0.35)))
+                        target["guard"] += guard_gain
+                        record_support(room, player)
+                        msg = f"{player['name']} used {skill['name']} to shield {target['name']}, granting {guard_gain} guard against the next enemy strike (d20: {die})."
                     elif skill_type == "heal":
                         target = find_player(room, target_id)
                         if not target: return self.send_json(400, {"error": "Choose an ally to heal."})
@@ -409,6 +418,21 @@ class Handler(SimpleHTTPRequestHandler):
 MANA_TIERS = [(1, "Passive"), (2, "Low"), (4, "Medium"), (6, "High"), (8, "Extreme"), (10, "Insane")]
 HEAL_ESSENCES = {"life", "renewal", "pure", "serene", "feast", "blood", "growth"}
 MANA_ESSENCES = {"gathering", "knowledge", "star", "moon", "sun", "dimension", "space", "void", "magic", "rune"}
+DEFENSE_ESSENCES = {"armor", "iron", "shield", "earth", "bone", "bear", "turtle", "might", "cattle", "chain", "cage", "coral", "spike", "tree"}
+DEFENSE_WORDS = ("guardian", "guard", "shield", "defend", "defense", "protect", "protection", "armored", "armour", "bulwark", "tank")
+DEFENSE_MOTIFS = {"armor":"bright steel", "iron":"forged iron", "shield":"a steadfast bulwark", "earth":"old mountain stone", "bone":"ivory plates", "bear":"a spirit-hide mantle", "turtle":"a layered shell", "might":"unyielding force", "cattle":"a horned rampart", "chain":"interlocking links", "cage":"a woven lattice", "coral":"coralstone", "spike":"a ring of spines", "tree":"living bark"}
+
+def can_defend_character(desc, essences):
+    return bool({x.lower() for x in essences} & DEFENSE_ESSENCES) or any(word in desc.lower() for word in DEFENSE_WORDS)
+
+def add_defensive_mode(skill, desc, essences):
+    if skill["type"] not in {"damage", "heal", "hybrid"}:
+        return skill
+    eligible = [e for e in essences if e.lower() in DEFENSE_ESSENCES]
+    motif = random.choice([DEFENSE_MOTIFS[e.lower()] for e in eligible]) if eligible else "a ward of force"
+    skill["canDefend"] = True
+    skill["desc"] = f"{skill['desc']} The same power can bloom into {motif} around an ally."
+    return skill
 
 def skill_for(desc, essences, cost, tier, awakened=False, forced_kind=None):
     essences = essences or ["Magic"]
@@ -469,10 +493,20 @@ def make_skills(desc, essences):
             count = random.randint(1, min(3, len(candidates)))
             for index in random.sample(candidates, count):
                 skills[index]["type"] = "hybrid"
+    if can_defend_character(desc, essences):
+        candidates = [skill for skill in skills if skill["type"] in {"damage", "heal", "hybrid"}]
+        if candidates:
+            count = random.randint(1, min(2, len(candidates)))
+            for skill in random.sample(candidates, count):
+                add_defensive_mode(skill, desc, essences)
     return skills
 
 def make_awakened_skill(player, cost, tier):
-    return skill_for(player.get("description", ""), player.get("essences", []), cost, tier, awakened=True)
+    desc, essences = player.get("description", ""), player.get("essences", [])
+    skill = skill_for(desc, essences, cost, tier, awakened=True)
+    if can_defend_character(desc, essences) and random.random() < 0.5:
+        add_defensive_mode(skill, desc, essences)
+    return skill
 
 def roll_value(d): return max(1, round(d * 1.25))
 def skill_value(die, skill):
