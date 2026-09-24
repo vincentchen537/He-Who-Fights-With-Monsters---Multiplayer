@@ -176,7 +176,8 @@ class Handler(SimpleHTTPRequestHandler):
             player = next((p for p in room["players"] if p["id"] == pid), None)
             if action == "join":
                 if room["phase"] != "lobby": return self.send_json(400, {"error": "This journey has already begun. Join a new room instead."})
-                name = str(data.get("name", "Adventurer"))[:24].strip() or "Adventurer"
+                name = str(data.get("name", ""))[:24].strip()
+                if not name: return self.send_json(400, {"error": "Enter your adventurer name before joining."})
                 requested_id = str(data.get("playerId", ""))
                 existing = next((p for p in room["players"] if requested_id and p["id"] == requested_id), None)
                 if not requested_id:
@@ -221,6 +222,7 @@ class Handler(SimpleHTTPRequestHandler):
                     check_result(room)
                 return self.send_json(200, {"closed": False, "room": public(room)})
             if action == "character":
+                if not player["name"].strip(): return self.send_json(400, {"error": "Enter your adventurer name before creating a character."})
                 desc = str(data.get("description", ""))[:1600]
                 selected = [x for x in data.get("essences", []) if x in ESSENCES][:3]
                 if len(selected) != 3: return self.send_json(400, {"error": "Choose exactly three essences."})
